@@ -9,17 +9,19 @@ const PORT = process.env.PORT || 3000;
 const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
 const COOKIE_FILE = path.join(__dirname, 'cookies.txt');
 
-// ----- Write cookies from environment variable -----
-if (!process.env.COOKIE_CONTENT) {
-  console.error('❌ COOKIE_CONTENT environment variable is not set!');
-  console.error('   Please set it on Render (Environment > Environment Variables).');
-  process.exit(1);
-}
-try {
-  fs.writeFileSync(COOKIE_FILE, process.env.COOKIE_CONTENT, 'utf8');
+// ----- Write cookies from environment variable OR fallback to file -----
+let cookieContent = process.env.COOKIE_CONTENT;
+
+if (cookieContent && cookieContent.trim().length > 0) {
+  console.log(`✅ COOKIE_CONTENT found (length: ${cookieContent.length} chars). Writing to ${COOKIE_FILE}...`);
+  fs.writeFileSync(COOKIE_FILE, cookieContent, 'utf8');
   console.log('✅ cookies.txt written successfully.');
-} catch (err) {
-  console.error('❌ Failed to write cookies.txt:', err.message);
+} else if (fs.existsSync(COOKIE_FILE)) {
+  console.log('⚠️ COOKIE_CONTENT not set, but found existing cookies.txt – using that.');
+} else {
+  console.error('❌ No cookies provided. Please either:');
+  console.error('   1. Set the COOKIE_CONTENT environment variable on Render, OR');
+  console.error('   2. Upload a cookies.txt file to the project root.');
   process.exit(1);
 }
 // ---------------------------------------------------
@@ -27,33 +29,27 @@ try {
 // Ensure download directory exists
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 
-// Middleware
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 
-// Serve the frontend
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Conversion endpoint
 app.post('/convert', async (req, res) => {
   const videoURL = req.body.url.trim();
-
   if (!videoURL || (!videoURL.includes('youtube.com') && !videoURL.includes('youtu.be'))) {
     return res.status(400).send('❌ Please enter a valid YouTube URL.');
   }
 
   try {
-    // Check if yt-dlp is installed
     await util.promisify(exec)('yt-dlp --version');
   } catch (err) {
-    return res.status(500).send('❌ yt-dlp is not installed. Please install it (pip install yt-dlp) and ensure it’s in your PATH.');
+    return res.status(500).send('❌ yt-dlp is not installed. Please install it (pip install yt-dlp).');
   }
 
   try {
     const outputTemplate = path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s');
-    // ----- Now with --cookies -----
     const command = `yt-dlp --cookies "${COOKIE_FILE}" -f bestaudio --extract-audio --audio-format mp3 --audio-quality 0 -o "${outputTemplate}" "${videoURL}"`;
 
     console.log(`🎵 Processing: ${videoURL}`);
@@ -77,16 +73,9 @@ app.post('/convert', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error:', error.message);
-
-    if (error.message.includes('410')) {
-      return res.status(410).send('⚠️ Video unavailable (410 Gone). It may be deleted, private, or blocked.');
-    }
-    if (error.message.includes('429')) {
-      return res.status(429).send('⚠️ Too many requests – cookies may be expired. Refresh your cookies and update COOKIE_CONTENT.');
-    }
-    if (error.message.includes('unavailable')) {
-      return res.status(404).send('⚠️ Video not found or unavailable.');
-    }
+    if (error.message.includes('410')) return res.status(410).send('⚠️ Video unavailable (410 Gone).');
+    if (error.message.includes('429')) return res.status(429).send('⚠️ Too many requests – cookies may be expired.');
+    if (error.message.includes('unavailable')) return res.status(404).send('⚠️ Video not found.');
     res.status(500).send(`❌ Conversion failed: ${error.message}`);
   }
 });
