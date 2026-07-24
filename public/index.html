@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube to MP3</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; text-align: center; }
+    input, button { padding: 10px; font-size: 16px; }
+    input { width: 70%; }
+    button { width: 25%; }
+    #status { margin-top: 20px; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>🎵 YouTube to MP3</h1>
+  <form id="form">
+    <input type="text" id="url" placeholder="Paste YouTube URL here..." required>
+    <button type="submit">Convert</button>
+  </form>
+  <div id="status">Enter a URL and click Convert.</div>
+
+  <script>
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const url = document.getElementById('url').value;
+      const status = document.getElementById('status');
+      status.textContent = '⏳ Downloading and converting...';
+
+      try {
+        const response = await fetch('/convert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ url })
+        });
+
+        if (response.ok) {
+          // The server returns the file as an attachment – trigger download
+          const blob = await response.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'audio.mp3'; // filename from server's Content-Disposition could be used
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          status.textContent = '✅ Download complete!';
+        } else {
+          const errorText = await response.text();
+          status.textContent = '❌ Error: ' + errorText;
+        }
+      } catch (err) {
+        status.textContent = '❌ Network error: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
