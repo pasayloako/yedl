@@ -5,11 +5,27 @@ const path = require('path');
 const util = require('util');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
+const COOKIE_FILE = path.join(__dirname, 'cookies.txt');
+
+// ----- Write cookies from environment variable -----
+if (!process.env.COOKIE_CONTENT) {
+  console.error('❌ COOKIE_CONTENT environment variable is not set!');
+  console.error('   Please set it on Render (Environment > Environment Variables).');
+  process.exit(1);
+}
+try {
+  fs.writeFileSync(COOKIE_FILE, process.env.COOKIE_CONTENT, 'utf8');
+  console.log('✅ cookies.txt written successfully.');
+} catch (err) {
+  console.error('❌ Failed to write cookies.txt:', err.message);
+  process.exit(1);
+}
+// ---------------------------------------------------
 
 // Ensure download directory exists
-if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
+if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 
 // Middleware
 app.use(express.static('public'));
@@ -24,7 +40,6 @@ app.get('/', (req, res) => {
 app.post('/convert', async (req, res) => {
   const videoURL = req.body.url.trim();
 
-  // Basic URL validation
   if (!videoURL || (!videoURL.includes('youtube.com') && !videoURL.includes('youtu.be'))) {
     return res.status(400).send('❌ Please enter a valid YouTube URL.');
   }
@@ -37,9 +52,9 @@ app.post('/convert', async (req, res) => {
   }
 
   try {
-    // Build the command
     const outputTemplate = path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s');
-    const command = `yt-dlp -f bestaudio --extract-audio --audio-format mp3 --audio-quality 0 -o "${outputTemplate}" "${videoURL}"`;
+    // ----- Now with --cookies -----
+    const command = `yt-dlp --cookies "${COOKIE_FILE}" -f bestaudio --extract-audio --audio-format mp3 --audio-quality 0 -o "${outputTemplate}" "${videoURL}"`;
 
     console.log(`🎵 Processing: ${videoURL}`);
     const { stdout, stderr } = await util.promisify(exec)(command);
@@ -48,7 +63,6 @@ app.post('/convert', async (req, res) => {
       console.warn('⚠️ yt-dlp stderr:', stderr);
     }
 
-    // Find the newly created MP3 file
     const files = fs.readdirSync(DOWNLOAD_DIR);
     const mp3File = files.find(f => f.endsWith('.mp3'));
     if (!mp3File) {
@@ -58,18 +72,18 @@ app.post('/convert', async (req, res) => {
     const filePath = path.join(DOWNLOAD_DIR, mp3File);
     res.download(filePath, mp3File, (err) => {
       if (err) console.error('Download error:', err);
-      // Clean up after download
       try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
     });
 
   } catch (error) {
     console.error('❌ Error:', error.message);
 
-    // Detect 410 Gone
     if (error.message.includes('410')) {
-      return res.status(410).send('⚠️ Video unavailable (410 Gone). It may be deleted, private, or blocked in your region.');
+      return res.status(410).send('⚠️ Video unavailable (410 Gone). It may be deleted, private, or blocked.');
     }
-    // Other common errors
+    if (error.message.includes('429')) {
+      return res.status(429).send('⚠️ Too many requests – cookies may be expired. Refresh your cookies and update COOKIE_CONTENT.');
+    }
     if (error.message.includes('unavailable')) {
       return res.status(404).send('⚠️ Video not found or unavailable.');
     }
@@ -78,5 +92,5 @@ app.post('/convert', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
