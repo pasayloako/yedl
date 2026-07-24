@@ -1,57 +1,177 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YouTube to MP3</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTube → MP3</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; text-align: center; }
-    input, button { padding: 10px; font-size: 16px; }
-    input { width: 70%; }
-    button { width: 25%; }
-    #status { margin-top: 20px; color: #333; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: #1e1e1e;
+      padding: 2.5rem 2rem;
+      border-radius: 24px;
+      max-width: 600px;
+      width: 90%;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+    h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    h1 span { color: #ff0033; }
+    p.sub {
+      color: #aaa;
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+    .input-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    input {
+      flex: 1;
+      padding: 14px 18px;
+      border: none;
+      border-radius: 40px;
+      background: #2c2c2c;
+      color: #fff;
+      font-size: 1rem;
+      min-width: 200px;
+    }
+    input:focus {
+      outline: 2px solid #ff0033;
+      background: #222;
+    }
+    button {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 40px;
+      background: #ff0033;
+      color: #fff;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    button:hover { background: #e6002b; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #status {
+      margin-top: 1.5rem;
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: #2a2a2a;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.95rem;
+      color: #ccc;
+      word-break: break-word;
+    }
+    #status.error { color: #ff6b6b; background: #2a1a1a; }
+    #status.success { color: #69db7c; background: #1a2a1a; }
+    .loader {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #444;
+      border-top-color: #ff0033;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    footer {
+      margin-top: 2rem;
+      font-size: 0.75rem;
+      color: #555;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
-  <h1>🎵 YouTube to MP3</h1>
+<div class="card">
+  <h1>🎵 <span>YouTube</span> → MP3</h1>
+  <p class="sub">Paste any YouTube link and get your MP3 instantly</p>
+
   <form id="form">
-    <input type="text" id="url" placeholder="Paste YouTube URL here..." required>
-    <button type="submit">Convert</button>
+    <div class="input-group">
+      <input type="text" id="url" placeholder="https://www.youtube.com/watch?v=..." required />
+      <button type="submit" id="btn">Convert</button>
+    </div>
   </form>
-  <div id="status">Enter a URL and click Convert.</div>
 
-  <script>
-    document.getElementById('form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const url = document.getElementById('url').value;
-      const status = document.getElementById('status');
-      status.textContent = '⏳ Downloading and converting...';
+  <div id="status">⏳ Ready — paste a URL and click Convert.</div>
+  <footer>Your files are never stored on this server.</footer>
+</div>
 
-      try {
-        const response = await fetch('/convert', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ url })
-        });
+<script>
+  const form = document.getElementById('form');
+  const urlInput = document.getElementById('url');
+  const btn = document.getElementById('btn');
+  const status = document.getElementById('status');
 
-        if (response.ok) {
-          // The server returns the file as an attachment – trigger download
-          const blob = await response.blob();
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'audio.mp3'; // filename from server's Content-Disposition could be used
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          status.textContent = '✅ Download complete!';
-        } else {
-          const errorText = await response.text();
-          status.textContent = '❌ Error: ' + errorText;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = urlInput.value.trim();
+    if (!url) return;
+
+    btn.disabled = true;
+    status.innerHTML = '<span class="loader"></span> Downloading & converting...';
+    status.className = '';
+
+    try {
+      const response = await fetch('/convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ url })
+      });
+
+      if (response.ok) {
+        // The server returns the MP3 file as a blob
+        const blob = await response.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        // Extract filename from Content-Disposition if possible
+        const contentDisp = response.headers.get('Content-Disposition');
+        let filename = 'audio.mp3';
+        if (contentDisp) {
+          const match = contentDisp.match(/filename="(.+)"/);
+          if (match) filename = match[1];
         }
-      } catch (err) {
-        status.textContent = '❌ Network error: ' + err.message;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        status.textContent = '✅ Download complete! (Check your downloads folder)';
+        status.className = 'success';
+      } else {
+        const errorText = await response.text();
+        status.textContent = '❌ ' + errorText;
+        status.className = 'error';
       }
-    });
-  </script>
+    } catch (err) {
+      status.textContent = '❌ Network error: ' + err.message;
+      status.className = 'error';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
 </body>
 </html>
